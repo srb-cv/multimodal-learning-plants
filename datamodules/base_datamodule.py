@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from typing import Any
 
 import pytorch_lightning as pl
+from pytorch_lightning.utilities.parsing import AttributeDict
 from torch.utils.data import Dataset, DataLoader
 
 
@@ -14,6 +15,7 @@ class DataModule(pl.LightningDataModule):
                  num_workers: int = 0,
                  pin_memory: bool = False,
                  drop_last: bool = False,
+                 persistent_workers: bool = False,
                  *args: Any,
                  **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -22,8 +24,8 @@ class DataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.drop_last = drop_last
-        self.hparams = {'datamodule': self.__class__.__name__,
-                        'batch_size': self.batch_size}
+        self.persistent_workers = persistent_workers
+        self.save_hyperparameters('batch_size')
 
     def _data_loader(self, dataset: Dataset, shuffle: bool = False) -> DataLoader:
         return DataLoader(dataset=dataset,
@@ -31,14 +33,15 @@ class DataModule(pl.LightningDataModule):
                           shuffle=shuffle,
                           num_workers=self.num_workers,
                           pin_memory=self.pin_memory,
-                          drop_last=self.drop_last)
+                          drop_last=self.drop_last,
+                          persistent_workers=self.persistent_workers)
 
     @classmethod
     def add_argparse_args(cls, parent_parser: ArgumentParser, **kwargs):
         group = parent_parser.add_argument_group(cls.__name__)
         cls._add_concrete_argparse_args(group)
         group.add_argument('--batch-size', type=int, default=32,
-                           help="Number of samples to be loaded per batch (default: 32)")
+                          help="Number of samples to be loaded per batch (default: 32)")
         group.add_argument('--shuffle', action='store_true',
                            help="Reshuffle the training data at every epoch")
         group.add_argument('--num-workers', type=int, default=0,
@@ -51,6 +54,9 @@ class DataModule(pl.LightningDataModule):
                            help="Drop the last incomplete batch if the dataset size is not divisible by the "
                                 "batch size. If not specified and the size of dataset is not divisible by the "
                                 "batch size, then the last batch will be smaller")
+        group.add_argument('--persistent-workers', action='store_true',
+                           help=" the data loader will not shutdown the worker processes after a dataset has been consumed once." 
+                                "This allows to maintain the workers `Dataset` instances alive. ")
         return parent_parser
 
     @classmethod

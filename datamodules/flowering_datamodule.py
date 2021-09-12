@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Union, Optional, List
 
 import torch
 from torch.utils.data import random_split
@@ -17,19 +17,21 @@ class FloweringDatamodule(DataModule):
     def __init__(self,
                  dataset_csv,
                  data_root,
-                 wave_lens: Optional[list[str]] = None,
+                 wave_lens: Optional[List[str]] = None,
                  val_split: Union[int, float] = 0.2,
                  seed: int = 42,
                  batch_size: int = 1,
                  shuffle: bool = True,
                  num_workers: int = 0,
                  pin_memory: bool = False,
-                 drop_last: bool = False) -> None:
+                 drop_last: bool = False,
+                 persistent_workers: bool = False) -> None:
         super().__init__(batch_size=batch_size,
                          shuffle=shuffle,
                          num_workers=num_workers,
                          pin_memory=pin_memory,
-                         drop_last=drop_last)
+                         drop_last=drop_last,
+                         persistent_workers=persistent_workers)
         self.dataset_csv = dataset_csv
         self.data_root = data_root
         self.wave_lens = self.dataset_cls.ALL_WAVE_LENS if wave_lens is None else wave_lens
