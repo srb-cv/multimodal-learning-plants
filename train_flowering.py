@@ -17,11 +17,25 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 def main(args):
     logger = TensorBoardLogger(save_dir=args.logdir, name=args.name, version=args.version, default_hp_metric=False)
     datamodule = FloweringDatamodule.from_argparse_args(args)
-    module = FloweringModule.from_argparse_args(args, modalities=datamodule.wave_lens)
-    module.hparams.update({'data': datamodule.hparams})
-    trainer = pl.Trainer.from_argparse_args(args, logger=logger)
-    trainer.fit(model=module, datamodule=datamodule)
-
+    if not args.testFlag:
+        print("Training")
+        if args.load_trained_model_flag:
+            print("args.load_trained_model_flag --", args.load_trained_model_flag)
+            module = FloweringModule.load_from_checkpoint(checkpoint_path="/data/ml/garg/RGBcombined_original/multimodal-learning-images/logs/version_"+str(args.trained_model_version_numb)+"/checkpoints/epoch=0-step=426.ckpt",hparams_file="/data/ml/garg/RGBcombined_original/multimodal-learning-images/logs/version_"+str(args.trained_model_version_numb)+"/hparams.yaml", modalities=datamodule.wave_lens)
+        else:
+            module = FloweringModule.from_argparse_args(args, modalities=datamodule.wave_lens)
+        module.hparams.update({'data': datamodule.hparams})
+        #early_stop_callback = EarlyStopping(monitor = "loss/validation", min_delta =0.005, patience = 10, verbose = True, mode = "min")
+        # trainer = pl.Trainer.from_argparse_args(args, logger=logger, max_epochs = 1) #gpus = 1,
+        trainer = pl.Trainer.from_argparse_args(args, logger=logger) #gpus = 1, callbacks=[early_stop_callback]
+        trainer.fit(model=module, datamodule=datamodule)
+    else:
+        print("Testing")
+        model = FloweringModule.load_from_checkpoint(
+        checkpoint_path="/data/ml/garg/multimodal-learning-images/logs/version_38/checkpoints/epoch=599-step=29999.ckpt",
+        hparams_file="/data/ml/garg/multimodal-learning-images/logs/version_38/hparams.yaml", modalities=datamodule.wave_lens)
+        trainer = pl.Trainer.from_argparse_args(args, logger=logger, max_epochs = 1)
+        trainer.test(model, datamodule=datamodule)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -36,6 +50,10 @@ if __name__ == '__main__':
                             "If integer is given, 'version_${VERSION}' format is used. If version is not specified, "
                             "the log directory will be inspected for existing versions and the next available version "
                             "will automatically be assigned")
+    group.add_argument('--testFlag', type=bool, default=False, help="Do you want to test the model?")
+    group.add_argument('--load_trained_model_flag', type=bool, default=False, help="Do you want to load already trained model?")
+    group.add_argument('--trained_model_version_numb', type=int, default=0, help="Please specify the version numbre of already trained model.")
+    
     # Add datamodule args
     FloweringDatamodule.add_argparse_args(parser)
     # Add module args
