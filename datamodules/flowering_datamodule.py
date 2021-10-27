@@ -56,6 +56,9 @@ class FloweringDatamodule(DataModule):
 
     def val_dataloader(self):
         return self._data_loader(self.val_set)
+    
+    def test_dataloader(self):
+        return self._data_loader(self.val_set)
 
     def _make_transforms(self):
         transforms = StandardTransform(

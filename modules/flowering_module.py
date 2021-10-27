@@ -1,3 +1,4 @@
+from datasets.flowering_dataset import FloweringDataset
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
@@ -6,11 +7,11 @@ from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, 
 from torchvision.models import resnet18
 
 from models.fusion_model import FusionModel
-
+from typing import List
 
 class FloweringModule(pl.LightningModule):
     def __init__(self,
-                 modalities: list[str],
+                 modalities: List[str],
                  latent_dim: int = 512,
                  reg_param: float = 0.01,
                  p: float = 1.,
@@ -30,8 +31,9 @@ class FloweringModule(pl.LightningModule):
         self.val_metrics = MetricCollection({
             'mean squared error/validation': MeanSquaredError(),
             'mean absolute error/validation': MeanAbsoluteError(),
-            'r2 score/validation': R2Score()
+            #'r2 score/validation': R2Score()
         })
+        self.test_mae_metric = MeanAbsoluteError()
 
     def forward(self, x):
         x = self.model(x).squeeze(-1)
@@ -59,6 +61,34 @@ class FloweringModule(pl.LightningModule):
         self.log("loss/validation", loss)
         self.log_dict(self.val_metrics(model_out, y))
 
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        model_out = self(x)
+        loss = self.loss(model_out, y.type(torch.float32))
+        self.log("loss/validation", loss)
+        self.log_dict(self.val_metrics(model_out, y))
+        
+        return {"mse":loss, "mae": self.test_mae_metric(model_out, y)}
+
+    def test_epoch_end(self, outputs) -> None:
+        out_tensor = torch.stack([x["mae"] for x in outputs])
+        mean_mse = torch.mean(out_tensor)
+        max_mae = torch.max(out_tensor)
+        min_mae = torch.min(out_tensor)
+        median_mae = torch.median(out_tensor) 
+        q_25_50_75 = torch.quantile(out_tensor, torch.tensor([0.25, 0.5, 0.75]).to('cuda:0'))
+        sorted_indices = torch.argsort(out_tensor)
+        print(f'Mean MAE: {mean_mse}')
+        print(f'Max MAE: {max_mae}')
+        print(f'Min MAE: {min_mae}')
+        print(f'Median MAE: {median_mae}')
+        print(f'Obtained Quantile Scores:{q_25_50_75}')
+        print(f'Indices with smallest 5 mae: {sorted_indices[:5]}')
+        print(f'Indices with largest 5 mae: {sorted_indices[-5:]}')
+        torch.save(out_tensor, "out_rgb_tensor.pt")
+
+
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         return optimizer
@@ -80,7 +110,7 @@ class FloweringModule(pl.LightningModule):
     def from_argparse_args(cls, args, **kwargs):
         return from_argparse_args(cls, args, **kwargs)
 
-    def _build_model(self, modalities: list[str], latent_dim: int):
+    def _build_model(self, modalities: List[str], latent_dim: int):
         submodels = dict()
         for modality in modalities:
             model = resnet18(pretrained=True)
