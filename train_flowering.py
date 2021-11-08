@@ -71,6 +71,10 @@ if __name__ == '__main__':
                             "If integer is given, 'version_${VERSION}' format is used. If version is not specified, "
                             "the log directory will be inspected for existing versions and the next available version "
                             "will automatically be assigned")
+    group.add_argument('--testFlag', type=bool, default=False, help="Do you want to test the model?")
+    group.add_argument('--load_trained_model_flag', type=bool, default=False, help="Do you want to load already trained model?")
+    group.add_argument('--trained_model_version_numb', type=int, default=0, help="Please specify the version numbre of already trained model.")
+    
     # Add datamodule args
     FloweringDatamodule.add_argparse_args(parser)
     # Add module args

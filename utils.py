@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, List
 
 
 def get_split_len(split_fraction: Union[int, float], len_dataset: int):
@@ -10,7 +10,7 @@ def get_split_len(split_fraction: Union[int, float], len_dataset: int):
         raise ValueError(f"Unsupported type {type(split_fraction)} for split fraction.")
 
 
-def get_split_lengths(split_fractions: list[Union[int, float]], len_dataset: int):
+def get_split_lengths(split_fractions: List[Union[int, float]], len_dataset: int):
     split_lengths = [get_split_len(fraction, len_dataset) for fraction in split_fractions]
     splits_sum = sum(split_lengths)
     if splits_sum > len_dataset:
