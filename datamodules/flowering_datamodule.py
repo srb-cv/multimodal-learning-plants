@@ -2,6 +2,7 @@ from typing import Union, Optional, List
 
 import torch
 from torch.utils.data import random_split
+from torch.utils.data import Subset
 from torchvision.datasets.vision import StandardTransform
 from torchvision.transforms import Compose, Resize, ToTensor
 
@@ -18,8 +19,9 @@ class FloweringDatamodule(DataModule):
                  dataset_csv,
                  data_root,
                  wave_lens: Optional[List[str]] = None,
-                 val_split: Union[int, float] = 0.2,
+                 val_split: Union[int, float] = 0.3,
                  seed: int = 42,
+                 year_split: bool = False,
                  batch_size: int = 1,
                  shuffle: bool = True,
                  num_workers: int = 0,
@@ -36,20 +38,35 @@ class FloweringDatamodule(DataModule):
         self.data_root = data_root
         self.wave_lens = self.dataset_cls.ALL_WAVE_LENS if wave_lens is None else wave_lens
         self.val_split = val_split
+        self.year_split = year_split
         self.seed = seed
         self.transforms = self._make_transforms()
         self.train_set = None
         self.val_set = None
 
     def setup(self, stage: Optional[str] = None):
-        dataset = self.dataset_cls(dataset_csv=self.dataset_csv,
+        if self.year_split:
+            self.train_set = self.dataset_cls(dataset_csv=self.dataset_csv,
+                                   data_root=self.data_root,
+                                   wave_lens=self.wave_lens,
+                                   transform=self.transforms,
+                                   year_split='train')
+            val_set = self.dataset_cls(dataset_csv=self.dataset_csv,
+                                   data_root=self.data_root,
+                                   wave_lens=self.wave_lens,
+                                   transform=self.transforms,
+                                   year_split='val')
+        else:
+            dataset = self.dataset_cls(dataset_csv=self.dataset_csv,
                                    data_root=self.data_root,
                                    wave_lens=self.wave_lens,
                                    transform=self.transforms)
-        split_lengths = get_split_lengths([self.val_split], len(dataset))
-        self.train_set, val_set = random_split(dataset, split_lengths,
+            split_lengths = get_split_lengths([self.val_split], len(dataset))
+            self.train_set, val_set = random_split(dataset, split_lengths,
                                                generator=torch.Generator().manual_seed(self.seed))
         self.val_set = val_set if len(val_set) else None
+        print(f'Number of datapoints in the train set : {len(self.train_set)}')
+        print(f'Number of datapoints in the validation set: {len(self.val_set)}')
 
     def train_dataloader(self):
         return self._data_loader(self.train_set, shuffle=self.shuffle)
@@ -78,7 +95,8 @@ class FloweringDatamodule(DataModule):
         arg_group.add_argument('--wave-lens', type=str, nargs='+',
                                help="Wavelengts to use. If not specified, all available wavelengts will be used "
                                     "(default: all wavelengths)")
-        arg_group.add_argument('--val-split', type=int_or_float_type, default=0.2,
-                               help="Fraction of data (int or float) to use for validation (default: 0.2)")
+        arg_group.add_argument('--val-split', type=int_or_float_type, default=0.3,
+                               help="Fraction of data (int or float) to use for validation (default: 0.3)")
         arg_group.add_argument('--seed', type=int, default=42,
                                help="Seed used for random data splits and shuffling (default: 42)")
+        arg_group.add_argument('--year-split', help="Use the data from the year 2018 as the validation set. The argument val-split becomes ineffective when this argument is used.", action="store_true")
