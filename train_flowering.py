@@ -24,39 +24,17 @@ def main(args):
     module = FloweringModule.from_argparse_args(args, modalities=datamodule.wave_lens)
     module.hparams.update({'data': datamodule.hparams})
     trainer = pl.Trainer.from_argparse_args(args, logger=logger)
-    trainer.fit(model=module, datamodule=datamodule)
-    #test_pretrained_model(trainer, datamodule, module)
+    #trainer.fit(model=module, datamodule=datamodule)
+    test_pretrained_model(trainer, datamodule, module)
 
 def test_pretrained_model(trainer, datamodule, module):
     model = FloweringModule.load_from_checkpoint(
-        checkpoint_path = 'logs/version_42/checkpoints/epoch=652-step=32649.ckpt',
-        hparams_file = 'logs/version_42/hparams.yaml',
+        checkpoint_path = 'logs/begin_of_flowering_all_images_non_adjusted/version_2/checkpoints/epoch=199-step=163399.ckpt',
+        hparams_file = 'logs/begin_of_flowering_all_images_non_adjusted/version_2/hparams.yaml',
         modalities=datamodule.wave_lens
     )
     print(datamodule.wave_lens)
     trainer.test(model=model, datamodule= datamodule)
-    # test_loader = datamodule.test_dataloader()
-    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # mse_metric = MeanSquaredError()
-    # mae_metric = MeanAbsoluteError()
-    # max_mse = 0
-    # max_mae = 0
-    # for inputs,labels in test_loader:
-    #     inputs = inputs.to(device)
-    #     labels = labels.to(device)
-    #     model_out = module(inputs)
-    #     mse = mse_metric(model_out, labels)
-    #     mae = mae_metric(model_out, labels)
-
-    #     if mae > max_mae:
-    #         max_mae = mae
-
-    # print(f'max mae: {max_mae}')
-
-
-        
-
-
 
 if __name__ == '__main__':
     parser = ArgumentParser()

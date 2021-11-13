@@ -22,7 +22,7 @@ class SNPImageDatamodule(DataModule):
                  bins: Optional[List[str]] = None,
                  val_split: Union[int, float] = 0.3,
                  seed: int = 42,
-                 year_split: bool = False,
+                 year_split: str = None,
                  batch_size: int = 1,
                  shuffle: bool = True,
                  num_workers: int = 0,
@@ -53,13 +53,13 @@ class SNPImageDatamodule(DataModule):
                                    wave_lens=self.wave_lens,
                                    bins=self.bins,
                                    transform=self.transforms,
-                                   year_split='train')
+                                   year_split='train_'+self.year_split)
             val_set = self.dataset_cls(dataset_csv=self.dataset_csv,
                                    data_root=self.data_root,
                                    wave_lens=self.wave_lens,
                                    bins=self.bins,
                                    transform=self.transforms,
-                                   year_split='val')
+                                   year_split='val_'+self.year_split)
         else:
             dataset = self.dataset_cls(dataset_csv=self.dataset_csv,
                                    data_root=self.data_root,
@@ -108,10 +108,11 @@ class SNPImageDatamodule(DataModule):
                                help="Fraction of data (int or float) to use for validation (default: 0.3)")
         arg_group.add_argument('--seed', type=int, default=42,
                                help="Seed used for random data splits and shuffling (default: 42)")
-        arg_group.add_argument('--year-split', help="Use the data from the year 2018 as the validation set. The argument val-split becomes ineffective when this argument is used.", action="store_true")
+        arg_group.add_argument('--year-split', type=str, 
+                               help="Use the data from the specified enviornment as validation set. eg: HOH_2018 for Hohenlieth location in year 2018")
 
 if __name__== '__main__':
-    dataset_csv = "/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/combined/BeginOfFlowering_Clean_non_adjusted_image_snp_BIN_combined.csv"
+    dataset_csv = '/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/BeginOfFlowering_Clean_non-adjusted_mapped_chromosome_images.csv'
     data_root = "/data/varshneya/clean_data_di"
-    datamodule = SNPImageDatamodule(dataset_csv, data_root)
+    datamodule = SNPImageDatamodule(dataset_csv, data_root, wave_lens=['0nm'],  year_split='HOH_2018', bins=['A1','A2'])
     datamodule.setup()

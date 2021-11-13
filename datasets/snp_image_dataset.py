@@ -11,12 +11,12 @@ import torch
 
 
 class SNPImageDataset(Dataset):
-    ALL_WAVE_LENS = ['0nm', '530nm', '570nm', '670nm', '700nm', '730nm', '780nm']
-    #ALL_WAVE_LENS = ['0nm']
-    ALL_BINS = ['bin_'+str(i) for i in range(101)]
+    #ALL_WAVE_LENS = ['0nm', '530nm', '570nm', '670nm', '700nm', '730nm', '780nm']
+    ALL_WAVE_LENS = ['0nm']
+    #ALL_BINS = ['bin_'+str(i) for i in range(101)]
+    ALL_BINS = ['A1', 'A10', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
     IMG_EXT = '.tif'
-    vocabulary = [
-     'A', 'C', 'G', 'K', 'M', 'R', 'S', 'T', 'W', 'Y']
+    vocabulary = ['A', 'C', 'G', 'K', 'M', 'R', 'S', 'T', 'W', 'Y']
     encoder = OneHotEncoder(categories=[vocabulary], handle_unknown='ignore')
 
     def __init__(self,
@@ -57,7 +57,7 @@ class SNPImageDataset(Dataset):
     def _get_sample(self, idx):
         row = self.data.iloc[idx]
         split_plot_code = row['plotCode'].split('_')
-        target = row['observation']
+        target = row['observation'].astype(np.float32)
         year = split_plot_code[2]
         location = split_plot_code[1]
         data_dir = os.path.join(self.data_root, "season"+str(year), "DeepIntegrate_Images_"+location+"_"+str(year))
@@ -84,29 +84,39 @@ class SNPImageDataset(Dataset):
         # df = df[df['waveLength'].isin(wave_lens)]
         # df = df[df['waveLength'].isin(FloweringDataset.ALL_WAVE_LENS)]
         trait = df.loc[0,'trait']
+        print(f"Testing for the trait: {trait}")
         diff_wavelens = list(set(SNPImageDataset.ALL_WAVE_LENS) - set(wave_lens))
         diff_bins = list(set(SNPImageDataset.ALL_BINS) - set(bins))
-        df.drop(columns=diff_wavelens+diff_bins)
+        df = df.drop(columns=diff_wavelens+diff_bins)
         if 'begin of flowering' in trait:
+            print(f"Calculating number of days for the trait {trait}")
             df['observation'] = df['observation'].astype(int) + 1  # adding one to make day of the year
             df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
             df['daysToFlowering'] = df['observation'] - df['date'].dt.day_of_year
             df = df.drop(columns=['observation'])
             df.rename(columns={'daysToFlowering':'observation'}, inplace=True)
             df = df[df['observation'].isin(range(-5,5))]
-        
-        df = df.dropna(subset=wave_lens+bins).reset_index()
-        df = df.filter(['plotCode','date','observation','harvestYear']+wave_lens+bins)
-        if year_split == 'train':
-            return df[df['harvestYear']!=2018]
-        elif year_split == 'val':
-            return df[df['harvestYear']==2018]
         else:
+            print("Normalizing the observation values with min-max scaling")
+            df['observation'] = df['observation'].astype(np.float32)
+            df.loc[:,'observation'] = (df['observation'] - df['observation'].min()) / (df['observation'].max() - df['observation'].min())
+        df = df.dropna(subset=wave_lens+bins).reset_index()
+        df = df.filter(['plotCode','date','observation','harvestYear','locationNumber']+wave_lens+bins)
+        df = df.astype({'harvestYear': str, 'locationNumber': str})
+        if year_split is None:
             return df
+        flag, loc, year = year_split.split('_')    
+        loc = '1' if loc=='HOH' else '2'
+        if flag == 'val':
+            return df[(df['harvestYear']==str(year)) & (df['locationNumber']==loc)]
+        elif flag == 'train':
+            return df[~((df['harvestYear']==str(year)) & (df['locationNumber']==loc))]
+            
+           
 
 
 if __name__== '__main__':
-    dataset_csv = "/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/combined/BeginOfFlowering_Clean_non_adjusted_image_snp_BIN_combined.csv"
+    dataset_csv = "/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/BeginOfFlowering_Clean_non-adjusted_mapped_chromosome_images.csv"
     data_root = "/data/varshneya/clean_data_di"
     bins = SNPImageDataset.ALL_BINS
     wave_lens = SNPImageDataset.ALL_WAVE_LENS

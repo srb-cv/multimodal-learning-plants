@@ -7,21 +7,21 @@ class SNPModel(nn.Module):
     def __init__(self, output_dim):
         super().__init__()
         self.conv1 = nn.Sequential(
-            nn.Conv1d(10, 3, kernel_size=1, stride=1),
+            nn.Conv1d(10, 16, kernel_size=5, stride=1),
             nn.ReLU(),
-            #nn.MaxPool1d(kernel_size=2, stride=2)
+            nn.MaxPool1d(kernel_size=2, stride=2)
         )
         self.conv2 = nn.Sequential(
-            nn.Conv1d(5, 3, kernel_size=1, stride=1),
+            nn.Conv1d(16, 32, kernel_size=3, stride=1),
             nn.ReLU(),
-            #nn.MaxPool1d(kernel_size=2, stride=2)
+            nn.MaxPool1d(kernel_size=2, stride=2)
         )
-        # self.conv3 = nn.Sequential(
-        #     nn.Conv1d(32, 64, kernel_size=3, stride=1),
-        #     nn.ReLU()
-        # )
+        self.conv3 = nn.Sequential(
+            nn.Conv1d(32, 64, kernel_size=3, stride=1),
+            nn.ReLU()
+        )
         self.conv4 = nn.Sequential(
-            nn.Conv1d(3, output_dim, kernel_size=1, stride=1),
+            nn.Conv1d(64, output_dim, kernel_size=1, stride=1),
             nn.ReLU()
         )
         self.adaptive_pool = nn.Sequential(
@@ -31,8 +31,8 @@ class SNPModel(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        #x = self.conv2(x)
-        #x = self.conv3(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
         x = self.conv4(x)
         x = self.adaptive_pool(x)
         x = x.view(int(x.size(0)), -1)

@@ -1,11 +1,9 @@
-from datasets.flowering_dataset import FloweringDataset
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.argparse import from_argparse_args
-from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score
-#from datasets.snp_image_dataset import SNPImageDataset
-from models.snp_model_bins import SNPModel 
+from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score, PearsonCorrcoef
+from models.snp_model_chromosomes import SNPModel 
 
 from models.fusion_snp_image import FusionSNPIMageModel
 from typing import List
@@ -39,7 +37,8 @@ class SNPImageModule(pl.LightningModule):
         self.val_metrics = MetricCollection({
             'mean squared error/validation': MeanSquaredError(),
             'mean absolute error/validation': MeanAbsoluteError(),
-            'r2 score/validation': R2Score()
+            'r2 score/validation': R2Score(),
+            'rscore/validation':PearsonCorrcoef()            
         })
         self.test_mae_metric = MeanAbsoluteError()
 
@@ -80,10 +79,22 @@ class SNPImageModule(pl.LightningModule):
         return {"mse":loss, "mae": self.test_mae_metric(model_out, y)}
 
     def test_epoch_end(self, outputs) -> None:
-        pass
+        out_tensor = torch.stack([x["mae"] for x in outputs])
+        mean_mse = torch.mean(out_tensor)
+        max_mae = torch.max(out_tensor)
+        min_mae = torch.min(out_tensor)
+        median_mae = torch.median(out_tensor) 
+        q_25_50_75 = torch.quantile(out_tensor, torch.tensor([0.25, 0.5, 0.75]).to('cuda:0'))
+        print(f'Mean MAE: {mean_mse}')
+        print(f'Max MAE: {max_mae}')
+        print(f'Min MAE: {min_mae}')
+        print(f'Median MAE: {median_mae}')
+        print(f'Obtained Quantile Scores:{q_25_50_75}')
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        optimizer =  torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
+        return {"optimizer":optimizer,"lr_scheduler":scheduler}
 
     @classmethod
     def add_model_specific_args(cls, parent_parser):
@@ -135,10 +146,10 @@ if __name__== '__main__':
     from datamodules.snp_image_datamodule import SNPImageDatamodule
     from datasets.snp_image_dataset import SNPImageDataset
 
-    dataset_csv = "/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/combined/BeginOfFlowering_Clean_non_adjusted_image_snp_BIN_combined.csv"
+    dataset_csv = '/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/BeginOfFlowering_Clean_non-adjusted_mapped_chromosome_images.csv'
     data_root = "/data/varshneya/clean_data_di"
     wave_lens=['0nm','530nm']
-    bins=['bin_0','bin_1']
+    bins=['A1','A2']
     datamodule = SNPImageDatamodule(dataset_csv, data_root,bins=bins,
                     wave_lens=wave_lens, batch_size=2)
     datamodule.setup()

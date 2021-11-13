@@ -10,12 +10,18 @@ import numpy as np
 import torch
 
 class SNPDataset(Dataset):
-    # CHROMOSOME_BINS = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10',
-    #            'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
-    CHROMOSOME_BINS = ['bin_'+str(i) for i in range(101)]
+
+    @staticmethod
+    def _get_bin_list():
+        snp_ordering = "data/Position_GeneticData_ordered.txt"
+        bins_df = pd.read_csv(snp_ordering,delimiter='\t')
+        bins_df['bin'] = bins_df['Chromosome'] + '_' + bins_df['Position'].map(str)
+        bins_group_indices_df = bins_df.groupby('bin')['Index'].apply(list)
+        return list(bins_group_indices_df.index)
     
-    vocabulary = [
-     'A', 'C', 'G', 'K', 'M', 'R', 'S', 'T', 'W', 'Y']
+    CHROMOSOME_BINS = _get_bin_list.__func__()
+    
+    vocabulary = ['A', 'C', 'G', 'K', 'M', 'R', 'S', 'T', 'W', 'Y']
     encoder = OneHotEncoder(categories=[vocabulary], handle_unknown='ignore')
 
     def __init__(self,
@@ -56,16 +62,17 @@ class SNPDataset(Dataset):
 
     @staticmethod
     def make_dataset_df(dataset_csv, bins):
-        df = pd.read_csv(dataset_csv)
+        df = pd.read_csv(dataset_csv,  dtype='unicode')
         df = df.filter(['plotCode','date','observation']+bins)
         df = df.dropna(subset=bins).reset_index()
-        df = df.drop_duplicates(subset=bins,ignore_index=True)
-        df.loc[:,'observation'] = (df['observation'] - df['observation'].min()) / (df['observation'].max() - df['observation'].min())
+        df = df.drop_duplicates(subset=bins+['observation'],ignore_index=True)
+        df['observation'] = df['observation'].astype(np.float32)
+        #df.loc[:,'observation'] = (df['observation'] - df['observation'].min()) / (df['observation'].max() - df['observation'].min())
         print(f'Number of datapoints: {len(df)}')
         return df
 
 if __name__== '__main__':
-    dataset_csv = '/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/dataPreprocess/begin_of_flowering_snp_image_unadjusted.csv'
+    dataset_csv = '/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/BeginOfFlowering_Clean_non-adjusted_mapped_chromosome_images.csv'
     bins = SNPDataset.CHROMOSOME_BINS
     data_module = SNPDataset(dataset_csv, bins)
 

@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.argparse import from_argparse_args
-from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score
+from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score, PearsonCorrcoef
 from datasets.snp_dataset import SNPDataset
 from models.snp_model_bins import SNPModel 
 
@@ -35,7 +35,8 @@ class SNPModule(pl.LightningModule):
         self.val_metrics = MetricCollection({
             'mean squared error/validation': MeanSquaredError(),
             'mean absolute error/validation': MeanAbsoluteError(),
-            #'r2 score/validation': R2Score()
+            'r2 score/validation': R2Score(),
+            'rscore/validation':PearsonCorrcoef()
         })
         self.test_mae_metric = MeanAbsoluteError()
 
@@ -94,19 +95,20 @@ class SNPModule(pl.LightningModule):
                     for modality, score in self.model.modality_scores(self.p).items()}
         print(log_dict)
         #exit(0)
-        with open('csv/adaptation_ger_non-adjusted_BINS_v1.csv','w') as f:
+        with open('csv/bins_updated/plant_height_non-adjusted_bins.csv','w') as f:
             w = csv.writer(f)
             w.writerows(log_dict.items())
 
         plt.bar(range(len(log_dict)), log_dict.values(), align='center')
         plt.xticks(range(len(log_dict)), list(log_dict.keys()))
-        plt.savefig('csv/adaptation_ger_non-adjusted_BINS_v1.png')
+        plt.savefig('csv/bins_updated/plant_height_non-adjusted_bins.png')
 
 
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        return optimizer
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
+        return {"optimizer":optimizer,"lr_scheduler":scheduler}
 
     @classmethod
     def add_model_specific_args(cls, parent_parser):

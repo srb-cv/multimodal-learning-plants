@@ -26,15 +26,19 @@ def main(args):
                                             snp_modalities=datamodule.bins)
     module.hparams.update({'data': datamodule.hparams})
     trainer = pl.Trainer.from_argparse_args(args, logger=logger, 
-                        callbacks=[EarlyStopping(monitor="loss/validation", patience=15)])
-    trainer.fit(model=module, datamodule=datamodule)
-    #test_pretrained_model(trainer, datamodule, module)
+                        callbacks=[EarlyStopping(monitor="loss/validation", patience=7)])
+    if args.test:
+        test_pretrained_model(trainer, datamodule, module)
+    else:
+        trainer.fit(model=module, datamodule=datamodule)
+        trainer.test(model=module, datamodule=datamodule)
 
 def test_pretrained_model(trainer, datamodule, module):
     model = SNPImageModule.load_from_checkpoint(
-        checkpoint_path = 'logs/version_42/checkpoints/epoch=652-step=32649.ckpt',
-        hparams_file = 'logs/version_42/hparams.yaml',
-        modalities=datamodule.wave_lens
+        checkpoint_path = 'logs/plant_height_chrom_img_archive/HOH_2018_unfiltered/checkpoints/epoch=30-step=44856.ckpt',
+        hparams_file = 'logs/plant_height_chrom_img_archive/HOH_2018_unfiltered/hparams.yaml',
+        image_modalities = datamodule.wave_lens,
+        snp_modalities = datamodule.bins
     )
     print(datamodule.wave_lens)
     trainer.test(model=model, datamodule= datamodule)
@@ -52,6 +56,8 @@ if __name__ == '__main__':
                             "If integer is given, 'version_${VERSION}' format is used. If version is not specified, "
                             "the log directory will be inspected for existing versions and the next available version "
                             "will automatically be assigned")
+    group.add_argument('--test', action='store_true',
+                           help="Testing the model on validation set")
     # Add datamodule args
     SNPImageDatamodule.add_argparse_args(parser)
     # Add module args

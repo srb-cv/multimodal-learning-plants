@@ -3,11 +3,13 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.argparse import from_argparse_args
-from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score
+from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score, PearsonCorrcoef
 from torchvision.models import resnet18
 
 from models.fusion_model import FusionModel
 from typing import List
+import csv
+import matplotlib.pyplot as plt
 
 class FloweringModule(pl.LightningModule):
     def __init__(self,
@@ -31,7 +33,8 @@ class FloweringModule(pl.LightningModule):
         self.val_metrics = MetricCollection({
             'mean squared error/validation': MeanSquaredError(),
             'mean absolute error/validation': MeanAbsoluteError(),
-            #'r2 score/validation': R2Score()
+            'r2 score/validation': R2Score(),
+            'rscore/validation':PearsonCorrcoef()
         })
         self.test_mae_metric = MeanAbsoluteError()
 
@@ -85,13 +88,22 @@ class FloweringModule(pl.LightningModule):
         print(f'Obtained Quantile Scores:{q_25_50_75}')
         print(f'Indices with smallest 5 mae: {sorted_indices[:5]}')
         print(f'Indices with largest 5 mae: {sorted_indices[-5:]}')
-        torch.save(out_tensor, "out_rgb_tensor.pt")
+        #torch.save(out_tensor, "out_rgb_tensor.pt")
+        log_dict = {f"{modality}": score.detach().cpu().item()
+                    for modality, score in self.model.modality_scores(self.p).items()}
+        print(log_dict)
+        #exit(0)
+        with open('csv/begin_of_flowering_wavelengths_weights.csv','w') as f:
+            w = csv.writer(f)
+            w.writerows(log_dict.items())
 
+        plt.bar(range(len(log_dict)), log_dict.values(), align='center')
+        plt.xticks(range(len(log_dict)), list(log_dict.keys()))
+        plt.savefig('csv/begin_of_flowering_wavelengths.png')
 
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        return optimizer
+        return torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
     @classmethod
     def add_model_specific_args(cls, parent_parser):
