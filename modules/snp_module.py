@@ -5,7 +5,9 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.argparse import from_argparse_args
 from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score, PearsonCorrcoef
 from datasets.snp_dataset import SNPDataset
-from models.snp_model_bins import SNPModel 
+from models.snp_model_bins import SNPModelBins
+from models.snp_model_chromosomes import SNPModelChromosome 
+# from models.snp_model_bins import SNPModelBins
 
 from models.fusion_model import FusionModel
 from typing import List
@@ -130,7 +132,8 @@ class SNPModule(pl.LightningModule):
     def _build_model(self, modalities: List[str], latent_dim: int):
         submodels = dict()
         for modality in modalities:
-            model = SNPModel(latent_dim)
+            model = SNPModelChromosome(latent_dim)
+            # model = SNPModelBins
             submodels[modality] = model
         return FusionModel(submodels=submodels, latent_dim=latent_dim, out_dim=1)
 

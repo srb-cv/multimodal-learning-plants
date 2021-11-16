@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import cat
 
-class SNPModel(nn.Module):
+class SNPModelChromosome(nn.Module):
     def __init__(self, output_dim):
         super().__init__()
         self.conv1 = nn.Sequential(
