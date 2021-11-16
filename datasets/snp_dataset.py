@@ -19,7 +19,8 @@ class SNPDataset(Dataset):
         bins_group_indices_df = bins_df.groupby('bin')['Index'].apply(list)
         return list(bins_group_indices_df.index)
     
-    CHROMOSOME_BINS = _get_bin_list.__func__()
+    #CHROMOSOME_BINS = _get_bin_list.__func__()
+    CHROMOSOME_BINS = ['A1', 'A10', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
     
     vocabulary = ['A', 'C', 'G', 'K', 'M', 'R', 'S', 'T', 'W', 'Y']
     encoder = OneHotEncoder(categories=[vocabulary], handle_unknown='ignore')
@@ -27,17 +28,18 @@ class SNPDataset(Dataset):
     def __init__(self,
                  dataset_csv: str,
                  bins: List[str],
-                 transform=None):
+                 transform=None,
+                 year_split=None):
         bins_set = set(bins)
         if len(bins) != len(bins_set):
-            raise ValueError(f"Specified bins must be unique.")
+            raise ValueError('Specified bins must be unique.')
         if not bins_set.issubset(self.CHROMOSOME_BINS):
             unknown_bins = list(bins_set - set(self.CHROMOSOME_BINS))
             raise ValueError(f"Modalities not known: {unknown_bins}. Available modalities: {self.CHROMOSOME_BINS}")
         self.dataset_csv = dataset_csv
         self.bins = bins
         self.transform = transform
-        self.data = self.make_dataset_df(self.dataset_csv, self.bins)
+        self.data = self.make_dataset_df(self.dataset_csv, self.bins, year_split)
 
     def __getitem__(self, idx):
         data_dict, target = self._get_sample(idx)
@@ -51,8 +53,7 @@ class SNPDataset(Dataset):
 
     def _one_hot_encode(self, sequence):
         seq_arr = np.array(list(sequence)).reshape(-1, 1)
-        one_hot = SNPDataset.encoder.fit_transform(seq_arr).toarray().T
-        return one_hot
+        return SNPDataset.encoder.fit_transform(seq_arr).toarray().T
 
     def _get_sample(self, idx):
         row = self.data.iloc[idx]
@@ -61,20 +62,38 @@ class SNPDataset(Dataset):
         return data_dict, target
 
     @staticmethod
-    def make_dataset_df(dataset_csv, bins):
-        df = pd.read_csv(dataset_csv,  dtype='unicode')
-        df = df.filter(['plotCode','date','observation']+bins)
+    def make_dataset_df(dataset_csv, bins, year_split):
+        df = pd.read_csv(dataset_csv)
+        trait = df.loc[0,'trait']
+        df = df.filter(['plotCode','date','observation','harvestYear','locationNumber']+bins)
         df = df.dropna(subset=bins).reset_index()
         df = df.drop_duplicates(subset=bins+['observation'],ignore_index=True)
+        if 'begin of flowering' in trait:
+            print(f"Calculating number of days for the trait {trait}")
+            df['observation'] = df['observation'].astype(int) + 1  # adding one to make day of the year
+            df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
+            df['daysToFlowering'] = df['observation'] - df['date'].dt.day_of_year
+            df = df.drop(columns=['observation'])
+            df.rename(columns={'daysToFlowering':'observation'}, inplace=True)
+            df = df[df['observation'].isin(range(-5,5))]
         df['observation'] = df['observation'].astype(np.float32)
         #df.loc[:,'observation'] = (df['observation'] - df['observation'].min()) / (df['observation'].max() - df['observation'].min())
+        df = df.astype({'harvestYear': str, 'locationNumber': str})
         print(f'Number of datapoints: {len(df)}')
-        return df
+        if year_split is None:
+            return df
+        flag, loc, year = year_split.split('_')    
+        loc = '1' if loc=='HOH' else '2'
+        if flag == 'val':
+            return df[(df['harvestYear']==str(year)) & (df['locationNumber']==loc)]
+        elif flag == 'train':
+            return df[~((df['harvestYear']==str(year)) & (df['locationNumber']==loc))]
 
 if __name__== '__main__':
-    dataset_csv = '/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/BeginOfFlowering_Clean_non-adjusted_mapped_chromosome_images.csv'
-    bins = SNPDataset.CHROMOSOME_BINS
-    data_module = SNPDataset(dataset_csv, bins)
+    dataset_csv = '/data/varshneya/clean_data_di/traits_csv/adaptation_ger/AdaptationGer_Clean_mapped_chromosome_non-adjusted.csv'
+    #bins = SNPDataset.CHROMOSOME_BINS
+    ALL_BINS = ['A1', 'A10', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
+    data_module = SNPDataset(dataset_csv, ALL_BINS)
 
     X,y = data_module[0]
     print(X)

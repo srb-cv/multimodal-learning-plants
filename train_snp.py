@@ -27,11 +27,12 @@ def main(args):
     # print(datamodule.bins)
     module = SNPModule.from_argparse_args(args, modalities=datamodule.bins)
     module.hparams.update({'data': datamodule.hparams})
-    trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=[EarlyStopping(monitor="loss/validation", patience=20)])
+    trainer = pl.Trainer.from_argparse_args(args, logger=logger, callbacks=[EarlyStopping(monitor="loss/validation", patience=10)])
     if args.test:
         test_pretrained_model(trainer, datamodule, module)
     else:
         trainer.fit(model=module, datamodule=datamodule)
+        trainer.test(model=module, datamodule=datamodule)
 
 def test_pretrained_model(trainer, datamodule, module):
     model = SNPModule.load_from_checkpoint(

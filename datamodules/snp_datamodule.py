@@ -16,6 +16,7 @@ class SNPDataModule(DataModule):
                  bins: Optional[List[str]] = None,
                  val_split: Union[int, float] = 0.2,
                  seed: int = 42,
+                 year_split: str = None,
                  batch_size: int = 1,
                  shuffle: bool = True,
                  num_workers: int = 0,
@@ -31,18 +32,31 @@ class SNPDataModule(DataModule):
         self.dataset_csv = dataset_csv
         self.bins = self.dataset_cls.CHROMOSOME_BINS if bins is None else bins
         self.val_split = val_split
+        self.year_split = year_split
         self.seed = seed
         self.train_set = None
         self.val_set = None
 
     def setup(self, stage: Optional[str] = None):
-        dataset = self.dataset_cls(dataset_csv=self.dataset_csv,
-                                   bins=self.bins,
-                                   transform=None)
-        split_lengths = get_split_lengths([self.val_split], len(dataset))
-        self.train_set, val_set = random_split(dataset, split_lengths,
-                                               generator=torch.Generator().manual_seed(self.seed))
+        if self.year_split:
+            self.train_set = self.dataset_cls(dataset_csv=self.dataset_csv,
+                                    bins=self.bins,
+                                    transform=None,
+                                    year_split='train_'+self.year_split)
+            val_set = self.dataset_cls(dataset_csv=self.dataset_csv,
+                                    bins=self.bins,
+                                    transform=None,
+                                    year_split='val_'+self.year_split)
+        else:    
+            dataset = self.dataset_cls(dataset_csv=self.dataset_csv,
+                                    bins=self.bins,
+                                    transform=None)
+            split_lengths = get_split_lengths([self.val_split], len(dataset))
+            self.train_set, val_set = random_split(dataset, split_lengths,
+                                                generator=torch.Generator().manual_seed(self.seed))
         self.val_set = val_set if len(val_set) else None
+        print(f'Number of datapoints in the train set : {len(self.train_set)}')
+        print(f'Number of datapoints in the validation set: {len(self.val_set)}')
 
     def train_dataloader(self):
         return self._data_loader(self.train_set, shuffle=self.shuffle)
@@ -60,7 +74,9 @@ class SNPDataModule(DataModule):
         arg_group.add_argument('--bins', type=str, nargs='+',
                                help="Bins to use. If not specified, all available bins will be used "
                                     "(default: all bins)")
-        arg_group.add_argument('--val-split', type=int_or_float_type, default=0.2,
-                               help="Fraction of data (int or float) to use for validation (default: 0.2)")
+        arg_group.add_argument('--val-split', type=int_or_float_type, default=0.3,
+                               help="Fraction of data (int or float) to use for validation (default: 0.3)")
         arg_group.add_argument('--seed', type=int, default=42,
                                help="Seed used for random data splits and shuffling (default: 42)")
+        arg_group.add_argument('--year-split', type=str, 
+                               help="Use the data from the specified enviornment as validation set. eg: HOH_2018 for Hohenlieth location in year 2018")
