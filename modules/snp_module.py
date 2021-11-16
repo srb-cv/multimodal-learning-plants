@@ -4,20 +4,24 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.argparse import from_argparse_args
 from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score, PearsonCorrcoef
-from torchvision.models import resnet18
+from datasets.snp_dataset import SNPDataset
+from models.snp_model_bins import SNPModelBins
+from models.snp_model_chromosomes import SNPModelChromosome 
+# from models.snp_model_bins import SNPModelBins
 
 from models.fusion_model import FusionModel
 from typing import List
 import csv
 import matplotlib.pyplot as plt
 
-class FloweringModule(pl.LightningModule):
+
+class SNPModule(pl.LightningModule):
     def __init__(self,
                  modalities: List[str],
-                 latent_dim: int = 512,
+                 latent_dim: int = 128,
                  reg_param: float = 0.01,
                  p: float = 1.,
-                 learning_rate: float = 1e-4):
+                 learning_rate: float = 1e-3):
         super().__init__()
         self.save_hyperparameters(ignore='modalities')
         self.model = self._build_model(modalities, latent_dim)
@@ -70,7 +74,7 @@ class FloweringModule(pl.LightningModule):
         loss = self.loss(model_out, y.type(torch.float32))
         self.log("loss/validation", loss)
         self.log_dict(self.val_metrics(model_out, y))
-        
+        #print(loss)        
         return {"mse":loss, "mae": self.test_mae_metric(model_out, y)}
 
     def test_epoch_end(self, outputs) -> None:
@@ -88,22 +92,25 @@ class FloweringModule(pl.LightningModule):
         print(f'Obtained Quantile Scores:{q_25_50_75}')
         print(f'Indices with smallest 5 mae: {sorted_indices[:5]}')
         print(f'Indices with largest 5 mae: {sorted_indices[-5:]}')
-        #torch.save(out_tensor, "out_rgb_tensor.pt")
+        # torch.save(out_tensor, "out_rgb_tensor.pt")
         log_dict = {f"{modality}": score.detach().cpu().item()
                     for modality, score in self.model.modality_scores(self.p).items()}
         print(log_dict)
         #exit(0)
-        with open('csv/begin_of_flowering_wavelengths_weights.csv','w') as f:
+        with open('csv/bins_updated/plant_height_non-adjusted_bins.csv','w') as f:
             w = csv.writer(f)
             w.writerows(log_dict.items())
 
         plt.bar(range(len(log_dict)), log_dict.values(), align='center')
         plt.xticks(range(len(log_dict)), list(log_dict.keys()))
-        plt.savefig('csv/begin_of_flowering_wavelengths.png')
+        plt.savefig('csv/bins_updated/plant_height_non-adjusted_bins.png')
+
 
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
+        return {"optimizer":optimizer,"lr_scheduler":scheduler}
 
     @classmethod
     def add_model_specific_args(cls, parent_parser):
@@ -115,8 +122,8 @@ class FloweringModule(pl.LightningModule):
                                help="Fusion regularization parameter (default: 0.01)")
         arg_group.add_argument('--p', type=float, default=1.,
                                help="Value of 'p' for fusion block regularization")
-        arg_group.add_argument('--learning-rate', type=float, default=1e-4,
-                               help="Learning rate (default: 1e-4)")
+        arg_group.add_argument('--learning-rate', type=float, default=1e-3,
+                               help="Learning rate (default: 1e-3)")
 
     @classmethod
     def from_argparse_args(cls, args, **kwargs):
@@ -125,8 +132,8 @@ class FloweringModule(pl.LightningModule):
     def _build_model(self, modalities: List[str], latent_dim: int):
         submodels = dict()
         for modality in modalities:
-            model = resnet18(pretrained=True)
-            model.fc = nn.Linear(model.fc.in_features, latent_dim)
+            model = SNPModelChromosome(latent_dim)
+            # model = SNPModelBins
             submodels[modality] = model
         return FusionModel(submodels=submodels, latent_dim=latent_dim, out_dim=1)
 
@@ -137,3 +144,23 @@ class FloweringModule(pl.LightningModule):
         log_dict = {f"modality_scores/{modality}": score
                     for modality, score in self.model.modality_scores(self.p).items()}
         self.log_dict(log_dict)
+
+
+if __name__== '__main__':
+    from datasets.snp_dataset import SNPDataset
+    from datamodules.snp_datamodule import SNPDataModule
+
+    dataset_csv = '/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/dataPreprocess/begin_of_flowering_snp_image_unadjusted.csv'
+    bins = SNPDataset.CHROMOSOME_BINS
+    data_module = SNPDataset(dataset_csv, bins)
+
+    X,y = data_module[0]
+    print(X)
+    print(y)
+    module = SNPModule(modalities=bins, latent_dim=128)
+    data_module = SNPDataModule(dataset_csv=dataset_csv,batch_size=8)
+    data_module.setup()
+    loader = data_module.train_dataloader()
+    X,y = next(iter(loader))
+    pred = module(X)
+    print(pred)

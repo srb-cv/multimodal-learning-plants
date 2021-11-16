@@ -1,5 +1,4 @@
-from typing import Union, List
-
+from typing import List, Union
 
 def get_split_len(split_fraction: Union[int, float], len_dataset: int):
     if isinstance(split_fraction, int):

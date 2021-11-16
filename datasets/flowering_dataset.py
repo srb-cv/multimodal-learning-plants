@@ -1,4 +1,5 @@
 import os
+import numpy as np
 
 from torch.utils.data import Dataset
 from torchvision.datasets.folder import pil_loader
@@ -42,12 +43,11 @@ class FloweringDataset(Dataset):
 
     def _get_sample(self, idx):
         row = self.data.iloc[idx]
+        target = row['observation'].astype(np.float32)
         split_plot_code = row['plotCode'].split('_')
-        target = row['observation']
         year = split_plot_code[2]
         location = split_plot_code[1]
         data_dir = os.path.join(self.data_root, "season"+str(year), "DeepIntegrate_Images_"+location+"_"+str(year))
-        # print(row['plotCode'])
         images = {wave_len: pil_loader(os.path.join(data_dir, row[wave_len].upper() + self.IMG_EXT))
                   for wave_len in self.wave_lens}
         return images, target
@@ -67,8 +67,6 @@ class FloweringDataset(Dataset):
         # filter = (df['processingStatus'] == 'uncropped') & \
         #          (df['observation'] > 10)
         # df = df[filter].drop(columns=['trait', 'processingStatus'])
-        # df = df[df['waveLength'].isin(wave_lens)]
-        # df = df[df['waveLength'].isin(FloweringDataset.ALL_WAVE_LENS)]
         trait = df.loc[0,'trait']
         diff_wavelens = list(set(FloweringDataset.ALL_WAVE_LENS) - set(wave_lens))
         df.drop(columns=diff_wavelens)
@@ -78,14 +76,6 @@ class FloweringDataset(Dataset):
             df['daysToFlowering'] = df['observation'] - df['date'].dt.day_of_year
             df = df.drop(columns=['observation'])
             df.rename(columns={'daysToFlowering':'observation'}, inplace=True)
-        
-        # df = df.pivot(index=['plotCode', 'date', 'daysToFlowering'], columns='waveLength', values='imageCode')
         df = df.dropna(subset=wave_lens).reset_index()
         df = df.filter(['plotCode','date','observation','harvestYear']+wave_lens)
-        if year_split=='train':
-            df_split = df[df['harvestYear']!=2018]
-        elif year_split=='val':
-            df_split = df[df['harvestYear']==2018]
-        else:
-            df_split = df
-        return df_split
+        return df

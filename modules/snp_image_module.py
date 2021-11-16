@@ -1,26 +1,30 @@
-from datasets.flowering_dataset import FloweringDataset
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.argparse import from_argparse_args
 from torchmetrics import MetricCollection, MeanSquaredError, MeanAbsoluteError, R2Score, PearsonCorrcoef
-from torchvision.models import resnet18
+from models.snp_model_chromosomes import SNPModel 
 
-from models.fusion_model import FusionModel
+from models.fusion_snp_image import FusionSNPIMageModel
 from typing import List
 import csv
 import matplotlib.pyplot as plt
+from torchvision.models import resnet18
 
-class FloweringModule(pl.LightningModule):
+
+
+class SNPImageModule(pl.LightningModule):
     def __init__(self,
-                 modalities: List[str],
-                 latent_dim: int = 512,
+                 image_modalities: List[str],
+                 snp_modalities: List[str],
+                 latent_dim_image: int = 32,
+                 latent_dim_snp: int = 4,
                  reg_param: float = 0.01,
                  p: float = 1.,
-                 learning_rate: float = 1e-4):
+                 learning_rate: float = 1e-3):
         super().__init__()
-        self.save_hyperparameters(ignore='modalities')
-        self.model = self._build_model(modalities, latent_dim)
+        self.save_hyperparameters()
+        self.model = self._build_model(image_modalities, snp_modalities, latent_dim_image, latent_dim_snp)
         self.reg_param = reg_param
         self.p = p
         self.learning_rate = learning_rate
@@ -34,7 +38,7 @@ class FloweringModule(pl.LightningModule):
             'mean squared error/validation': MeanSquaredError(),
             'mean absolute error/validation': MeanAbsoluteError(),
             'r2 score/validation': R2Score(),
-            'rscore/validation':PearsonCorrcoef()
+            'rscore/validation':PearsonCorrcoef()            
         })
         self.test_mae_metric = MeanAbsoluteError()
 
@@ -52,10 +56,11 @@ class FloweringModule(pl.LightningModule):
         loss = self.loss(model_out, y.type(torch.float32))
         self.log("loss/train", loss)
         self.log_dict(self.train_metrics(model_out, y))
-        return loss + self._fusion_regularizer()
+        return loss #+ self._fusion_regularizer()
 
     def training_epoch_end(self, outputs):
-        self._log_modality_scores()
+        pass
+        # self._log_modality_scores()
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
@@ -70,7 +75,7 @@ class FloweringModule(pl.LightningModule):
         loss = self.loss(model_out, y.type(torch.float32))
         self.log("loss/validation", loss)
         self.log_dict(self.val_metrics(model_out, y))
-        
+        #print(loss)        
         return {"mse":loss, "mae": self.test_mae_metric(model_out, y)}
 
     def test_epoch_end(self, outputs) -> None:
@@ -80,55 +85,53 @@ class FloweringModule(pl.LightningModule):
         min_mae = torch.min(out_tensor)
         median_mae = torch.median(out_tensor) 
         q_25_50_75 = torch.quantile(out_tensor, torch.tensor([0.25, 0.5, 0.75]).to('cuda:0'))
-        sorted_indices = torch.argsort(out_tensor)
         print(f'Mean MAE: {mean_mse}')
         print(f'Max MAE: {max_mae}')
         print(f'Min MAE: {min_mae}')
         print(f'Median MAE: {median_mae}')
         print(f'Obtained Quantile Scores:{q_25_50_75}')
-        print(f'Indices with smallest 5 mae: {sorted_indices[:5]}')
-        print(f'Indices with largest 5 mae: {sorted_indices[-5:]}')
-        #torch.save(out_tensor, "out_rgb_tensor.pt")
-        log_dict = {f"{modality}": score.detach().cpu().item()
-                    for modality, score in self.model.modality_scores(self.p).items()}
-        print(log_dict)
-        #exit(0)
-        with open('csv/begin_of_flowering_wavelengths_weights.csv','w') as f:
-            w = csv.writer(f)
-            w.writerows(log_dict.items())
-
-        plt.bar(range(len(log_dict)), log_dict.values(), align='center')
-        plt.xticks(range(len(log_dict)), list(log_dict.keys()))
-        plt.savefig('csv/begin_of_flowering_wavelengths.png')
-
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        optimizer =  torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
+        return {"optimizer":optimizer,"lr_scheduler":scheduler}
 
     @classmethod
     def add_model_specific_args(cls, parent_parser):
         arg_group = parent_parser.add_argument_group(cls.__name__)
-        arg_group.add_argument('--latent-dim', type=int, default=512,
-                               help="Dimentionality of latent space, "
-                                    "i.e. dimensionality of submodels' output (default: 512)")
+        arg_group.add_argument('--latent-dim-image', type=int, default=32,
+                               help="Dimentionality of latent space for image modality"
+                                    "i.e. dimensionality of submodels' output (default: 32)")
+        arg_group.add_argument('--latent-dim-snp', type=int, default=4,
+                               help="Dimentionality of latent space for snp modality"
+                                    "i.e. dimensionality of submodels' output (default: 4)")
         arg_group.add_argument('--reg-param', type=float, default=0.01,
                                help="Fusion regularization parameter (default: 0.01)")
         arg_group.add_argument('--p', type=float, default=1.,
                                help="Value of 'p' for fusion block regularization")
-        arg_group.add_argument('--learning-rate', type=float, default=1e-4,
-                               help="Learning rate (default: 1e-4)")
+        arg_group.add_argument('--learning-rate', type=float, default=1e-3,
+                               help="Learning rate (default: 1e-3)")
 
     @classmethod
     def from_argparse_args(cls, args, **kwargs):
         return from_argparse_args(cls, args, **kwargs)
 
-    def _build_model(self, modalities: List[str], latent_dim: int):
-        submodels = dict()
-        for modality in modalities:
+    def _build_model(self, image_modalities: List[str], snp_modalities, latent_dim_image: int, latent_dim_snp: int):
+        snp_submodels = {}
+        image_submodels = {}
+        for modality in snp_modalities:
+            model = SNPModel(latent_dim_snp)
+            snp_submodels[modality] = model
+        
+        for modality in image_modalities:
             model = resnet18(pretrained=True)
-            model.fc = nn.Linear(model.fc.in_features, latent_dim)
-            submodels[modality] = model
-        return FusionModel(submodels=submodels, latent_dim=latent_dim, out_dim=1)
+            model.fc = nn.Linear(model.fc.in_features, latent_dim_image)
+            image_submodels[modality] = model
+        return FusionSNPIMageModel(submodels_image=image_submodels,
+        submodels_snp=snp_submodels,
+        latent_dim_image=latent_dim_image,
+        latent_dim_snp=latent_dim_snp,
+         out_dim=1)
 
     def _fusion_regularizer(self):
         return self.reg_param * self.model.fusion.regularizer(self.p)
@@ -137,3 +140,21 @@ class FloweringModule(pl.LightningModule):
         log_dict = {f"modality_scores/{modality}": score
                     for modality, score in self.model.modality_scores(self.p).items()}
         self.log_dict(log_dict)
+
+
+if __name__== '__main__':
+    from datamodules.snp_image_datamodule import SNPImageDatamodule
+    from datasets.snp_image_dataset import SNPImageDataset
+
+    dataset_csv = '/data/varshneya/clean_data_di/traits_csv/begin_of_flowering/BeginOfFlowering_Clean_non-adjusted_mapped_chromosome_images.csv'
+    data_root = "/data/varshneya/clean_data_di"
+    wave_lens=['0nm','530nm']
+    bins=['A1','A2']
+    datamodule = SNPImageDatamodule(dataset_csv, data_root,bins=bins,
+                    wave_lens=wave_lens, batch_size=2)
+    datamodule.setup()
+    module = SNPImageModule(image_modalities=wave_lens,snp_modalities=bins)
+    loader = datamodule.train_dataloader()
+    X,y = next(iter(loader))
+    pred = module(X)
+    print(pred)
